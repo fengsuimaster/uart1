@@ -1,0 +1,33 @@
+# Questa/ModelSim
+work/
+vsim.wlf
+*.wlf
+transcript
+*.vstf
+*.sdf
+*.mti
+*.mpf
+*.ini
+*.cr.mti
+*.cr
+*.dat
+*.vcd
+*.fsdb
+*.dump
+*.vpd
+
+# Simulation output
+*.bak
+*.log
+*.lst
+*.dump
+*.vcd
+
+#Temp
+_temp/
+_tempmsg/
+@_opt/
+
+# OS generated files
+Thumbs.db
+.DS_Store
