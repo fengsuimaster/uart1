@@ -142,7 +142,7 @@ always @(posedge sys_clk or negedge sys_rst_n) begin
             DATA_BITS: begin
                 if (bit_flag == 1'b1) begin
                     bit_cnt <= bit_cnt + 1'b1;
-                    rx_reg <= {rx_reg[6:0], rx_reg3};
+                    rx_reg <= {rx_reg3, rx_reg[7:1]};
                 end
             end
             PARITY: begin
@@ -156,14 +156,14 @@ always @(posedge sys_clk or negedge sys_rst_n) begin
                 end
             end
             STOP_BIT: begin
-                if (bit_flag == 1'b1) begin
-                    if (rx_reg3 == 1'b1) begin
-                        data_out <= rx_reg;
-                        ctrl_reg[3] <= 1'b1;
-                        ctrl_reg[4] <= 0;
-                    end else begin
-                        ctrl_reg[4] <= 1'b1;
-                    end
+                if ((bit_flag == 1'b1) && (rx_reg3 == 1'b1)) begin
+                    data_out <= rx_reg;
+                    ctrl_reg[3] <= 1'b1;
+                    ctrl_reg[4] <= 0;
+                end else if ((bit_flag == 1'b1) && (rx_reg3 == 1'b0)) begin
+                    ctrl_reg[4] <= 1'b1;
+                end else begin
+                    ctrl_reg[3] <= 0;
                 end
             end
         endcase
