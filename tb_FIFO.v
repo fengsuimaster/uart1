@@ -1,3 +1,5 @@
+`include "FIFO.v"
+
 module tb_FIFO();
 
 reg         sys_clk  ;

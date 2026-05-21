@@ -4,14 +4,14 @@ module FIFO #(
     parameter ADDRESS_WIDTH = 'd8,
     parameter DATA_WIDTH    = 'd8
 )(
-    input                         sys_clk  ,
-    input                         sys_rst_n,
-    input      [DATA_WIDTH - 1:0] data_in  ,
-    input                         write    ,  // 单周期脉冲
-    input                         read     ,  // 单周期脉冲
-    output reg [DATA_WIDTH - 1:0] data_out ,
-    output reg                    empty    ,
-    output reg                    full     
+    input                          sys_clk  ,
+    input                          sys_rst_n,
+    input      [DATA_WIDTH - 1:0]  data_in  ,
+    input                          write    ,  // 单周期脉冲
+    input                          read     ,  // 单周期脉冲
+    output wire [DATA_WIDTH - 1:0] data_out ,
+    output reg                     empty    ,
+    output reg                     full     
 );
 
 localparam RAM_LENGTH = 1 << ADDRESS_WIDTH;
@@ -35,26 +35,28 @@ ram #(
     .data_out     (data_out     )
 );
 
-// 写指针 & FIFO计数器
+// 计数器
 always @(posedge sys_clk or negedge sys_rst_n) begin
     if (sys_rst_n == 0) begin
         write_address <= 0;
         fifo_cnt      <= 0;
     end else begin
         case ({(write & ~full), (read & ~empty)})
-            2'b10: begin  // 只写不读
-                write_address <= write_address + 1'b1;
-                fifo_cnt      <= fifo_cnt + 1'b1;
-            end
-            2'b01: begin  // 只读不写
+            2'b10:   // 只写不读
+                fifo_cnt <= fifo_cnt + 1'b1;
+            2'b01:   // 只读不写
                 fifo_cnt <= fifo_cnt - 1'b1;
-            end
-            2'b11: begin  // 同时读写
-                write_address <= write_address + 1'b1;
-                // fifo_cnt 不变
-            end
-            default: ;  // 无操作
+            default: ;
         endcase
+    end
+end
+
+// 写指针
+always @(posedge sys_clk or negedge sys_rst_n) begin
+    if (sys_rst_n == 0) begin
+        write_address <= 0;
+    end else if (write & ~full) begin
+        write_address <= write_address + 1'b1;
     end
 end
 
