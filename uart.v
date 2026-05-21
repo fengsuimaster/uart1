@@ -1,78 +1,144 @@
 // ****************************************************************************
 // 模块名: uart
-// 功能描述: UART顶层模块，例化uart_tx发送模块和uart_rx接收模块
-//           支持波特率可配、奇偶校验可选（无校验/奇校验/偶校验）
+// 功能描述: UART顶层模块，集成TX/RX子模块 + TX FIFO + RX FIFO
+//           TX: 用户写入FIFO，自动从FIFO取数发送
+//           RX: 接收数据自动存入FIFO，用户按需读取
 // 作者: 
 // 日期: 
 // ****************************************************************************
 
+`include "uart_tx.v"
+`include "uart_rx.v"
+`include "FIFO.v"
+
 module uart (
     // 系统接口
-    input               sys_clk,        // 系统时钟
-    input               sys_rst_n,      // 系统复位，低电平有效
+    input               sys_clk,
+    input               sys_rst_n,
 
     // 串行接口
-    input               rx,             // UART接收输入
-    output              tx,             // UART发送输出
+    input               rx,
+    output              tx,
 
-    // 波特率配置
-    input  [15:0]       baud_cnt_max_in, // 波特率计数最大值 = 时钟频率/波特率 - 1
+    // 波特率 & 校验配置（TX/RX共享）
+    input  [15:0]       baud_cnt_max_in,
+    input  [1:0]        parity_mode,
 
-    // 发送接口
-    input  [7:0]        tx_data_in,      // 待发送数据
-    input               tx_start,        // 发送启动信号（上升沿有效）
-    output              tx_busy,         // 发送忙标志
-    output              tx_done,         // 发送完成标志
+    // TX 用户接口（写 FIFO）
+    input  [7:0]        tx_data_in,
+    input               tx_wr_en,
+    output              tx_busy,
+    output              tx_fifo_full,
 
-    // 接收接口
-    output [7:0]        rx_data_out,     // 接收到的数据
-    output              rx_done,         // 接收完成标志（一帧数据接收完毕）
-    output              rx_error,        // 接收错误标志（停止位错误）
-
-    // 控制/状态寄存器直通
-    input  [7:0]        tx_ctrl_reg_in,  // 发送控制寄存器输入
-    output [7:0]        tx_ctrl_reg_out, // 发送控制寄存器输出
-    input  [7:0]        rx_ctrl_reg_in,  // 接收控制寄存器输入
-    output [7:0]        rx_ctrl_reg_out, // 接收控制寄存器输出
-    output [15:0]       baud_cnt_max_out // 波特率计数最大值直通输出
+    // RX 用户接口（读 FIFO）
+    output [7:0]        rx_data_out,
+    input               rx_rd_en,
+    output              rx_done,
+    output              rx_error,
+    output              rx_fifo_empty
 );
 
 // ----------------------------------------------------------------------------
-// 例化uart_tx发送模块
+// TX FIFO 信号
 // ----------------------------------------------------------------------------
-// 例化uart_tx发送模块
+wire [7:0]  tx_fifo_data_out;
+wire        tx_fifo_empty;
+
+// 写入 TX FIFO（满时禁止写入）
+wire tx_fifo_wr = tx_wr_en & ~tx_fifo_full;
+
+FIFO #(
+    .ADDRESS_WIDTH(8),
+    .DATA_WIDTH   (8)
+) tx_fifo_inst (
+    .sys_clk  (sys_clk),
+    .sys_rst_n(sys_rst_n),
+    .data_in  (tx_data_in),
+    .write    (tx_fifo_wr),
+    .read     (tx_start),
+    .data_out (tx_fifo_data_out),
+    .empty    (tx_fifo_empty),
+    .full     (tx_fifo_full)
+);
+
 // ----------------------------------------------------------------------------
+// TX 自动发送逻辑
+// ----------------------------------------------------------------------------
+// ready = TX空闲 且 FIFO非空
+wire tx_ready = ~tx_busy & ~tx_fifo_empty;
+
+// 上升沿检测 → 单周期脉冲，同时作为 tx_start 和 FIFO 读使能
+wire tx_start;
+edge_detect #(
+    .EDGE_TYPE(0)
+) edge_tx_start (
+    .sys_clk  (sys_clk),
+    .sys_rst_n(sys_rst_n),
+    .signal_in(tx_ready),
+    .pulse_out(tx_start)
+);
+
+// ----------------------------------------------------------------------------
+// uart_tx 实例化
+// ----------------------------------------------------------------------------
+wire tx_done;  // TX 完成脉冲（内部使用）
+
 uart_tx uart_tx_inst (
-    .sys_clk            (sys_clk),
-    .sys_rst_n          (sys_rst_n),
-    .data_in            (tx_data_in),
-    .baud_cnt_max_in    (baud_cnt_max_in),
-    .ctrl_reg_in        ({4'b0000, tx_start, 1'b0, 2'b00}),
-    .tx                 (tx),
-    .baud_cnt_max_out   (baud_cnt_max_out),
-    .ctrl_reg_out       (tx_ctrl_reg_out)
+    .sys_clk        (sys_clk),
+    .sys_rst_n      (sys_rst_n),
+    .data_in        (tx_fifo_data_out),
+    .baud_cnt_max_in(baud_cnt_max_in),
+    .parity_mode    (parity_mode),
+    .start          (tx_start),
+    .tx             (tx),
+    .done           (tx_done),
+    .busy           (tx_busy)
 );
 
 // ----------------------------------------------------------------------------
-// 例化uart_rx接收模块
+// uart_rx 实例化
 // ----------------------------------------------------------------------------
+wire [7:0]  rx_data_raw;
+wire        rx_done_raw;
+wire        rx_parity_result;  // 未使用，可扩展
+
 uart_rx uart_rx_inst (
-    .sys_clk            (sys_clk),
-    .sys_rst_n          (sys_rst_n),
-    .rx                 (rx),
-    .baud_cnt_max_in    (baud_cnt_max_in),
-    .ctrl_reg_in        (rx_ctrl_reg_in),
-    .data_out           (rx_data_out),
-    .baud_cnt_max_out   (),
-    .ctrl_reg_out       (rx_ctrl_reg_out)
+    .sys_clk        (sys_clk),
+    .sys_rst_n      (sys_rst_n),
+    .rx             (rx),
+    .baud_cnt_max_in(baud_cnt_max_in),
+    .parity_mode    (parity_mode),
+    .data_out       (rx_data_raw),
+    .parity_result  (rx_parity_result),
+    .done           (rx_done_raw),
+    .error          (rx_error)
 );
 
 // ----------------------------------------------------------------------------
-// 信号分配
+// RX FIFO 信号
 // ----------------------------------------------------------------------------
-assign tx_done   = tx_ctrl_reg_out[3];  // 发送完成标志
-assign tx_busy   = tx_ctrl_reg_out[5];  // 发送忙标志
-assign rx_done   = rx_ctrl_reg_out[3];  // 接收完成标志
-assign rx_error  = rx_ctrl_reg_out[4];  // 接收错误标志
+wire rx_fifo_full;   // 内部使用，注意溢出
+
+// 收到一帧 → 写入 RX FIFO
+wire rx_fifo_wr = rx_done_raw & ~rx_fifo_full;
+
+FIFO #(
+    .ADDRESS_WIDTH(8),
+    .DATA_WIDTH   (8)
+) rx_fifo_inst (
+    .sys_clk  (sys_clk),
+    .sys_rst_n(sys_rst_n),
+    .data_in  (rx_data_raw),
+    .write    (rx_fifo_wr),
+    .read     (rx_rd_en),
+    .data_out (rx_data_out),
+    .empty    (rx_fifo_empty),
+    .full     (rx_fifo_full)
+);
+
+// ----------------------------------------------------------------------------
+// 输出分配
+// ----------------------------------------------------------------------------
+assign rx_done = rx_done_raw;
 
 endmodule
