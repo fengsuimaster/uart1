@@ -1,10 +1,10 @@
 module edge_detect #(
-    parameter EDGE_TYPE = 0   // 0: 上升沿, 1: 下降沿, 2: 双边沿
+    parameter  EDGE_TYPE = 0      // 0: 上升沿, 1: 下降沿, 2: 双边沿
 ) (
     input      sys_clk  ,
     input      sys_rst_n,
     input      signal_in,        // 待检测信号需要已同步到本时钟域
-    output reg pulse_out     // 单周期正脉冲
+    output reg pulse_out         // 单周期正脉冲
 );
 
 reg signal_in_reg;
