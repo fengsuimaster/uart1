@@ -100,13 +100,15 @@ always @(posedge sys_clk or negedge sys_rst_n) begin
                 tx <= 1'b1;
                 busy <= 0;
                 parity_mode_reg <= parity_mode;
+                if (start_pulse) begin
+                    bit_cnt <= 0;
+                    done <= 0;
+                    busy <= 1;
+                end
             end
             START_BIT: begin
                 if (baud_cnt == 0) begin
-                    bit_cnt <= 0;
                     tx <= 0;
-                    busy <= 1;
-                    done <= 0;
                     // 校验计算
                     if (parity_mode == ODD_PARITY)
                         parity_out_reg <= ~^data_in;

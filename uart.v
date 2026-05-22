@@ -1,52 +1,34 @@
-// ****************************************************************************
-// 模块名: uart
-// 功能描述: UART顶层模块，集成TX/RX子模块 + TX FIFO + RX FIFO
-//           TX: 用户写入FIFO，自动从FIFO取数发送
-//           RX: 接收数据自动存入FIFO，用户按需读取
-// 作者: 
-// 日期: 
-// ****************************************************************************
-
 `include "uart_tx.v"
 `include "uart_rx.v"
 `include "FIFO.v"
 
 module uart (
     // 系统接口
-    input               sys_clk,
-    input               sys_rst_n,
-
-    // 串行接口
-    input               rx,
-    output              tx,
-
-    // 波特率 & 校验配置（TX/RX共享）
+    input               sys_clk        ,
+    input               sys_rst_n      ,
+    // 波特率和校验，公用
     input  [15:0]       baud_cnt_max_in,
-    input  [1:0]        parity_mode,
-
-    // TX 用户接口（写 FIFO）
-    input  [7:0]        tx_data_in,
-    input               tx_wr_en,
-    output              tx_busy,
-    output              tx_fifo_full,
-
-    // RX 用户接口（读 FIFO）
-    output [7:0]        rx_data_out,
-    input               rx_rd_en,
-    output              rx_done,
-    output              rx_error,
-    output              rx_fifo_empty
+    input  [1:0]        parity_mode    ,
+    // Tx
+    input  [7:0]        tx_data_in     ,
+    input               tx_write       ,  // 单周期脉冲
+    output              tx_done        ,
+    output              tx_fifo_full   ,
+    output              tx_fifo_empty  ,
+    output              tx             ,
+    // Rx
+    input               rx             ,
+    input               rx_read        ,  // 单周期脉冲
+    output [7:0]        rx_data_out    ,
+    output              rx_done        ,
+    output              rx_fifo_full   ,
+    output              rx_fifo_empty  
 );
 
-// ----------------------------------------------------------------------------
-// TX FIFO 信号
-// ----------------------------------------------------------------------------
+// Tx FIFO
 wire [7:0]  tx_fifo_data_out;
-wire        tx_fifo_empty;
-
-// 写入 TX FIFO（满时禁止写入）
-wire tx_fifo_wr = tx_wr_en & ~tx_fifo_full;
-
+wire tx_fifo_write = tx_write & ~tx_fifo_full;
+wire tx_start;
 FIFO #(
     .ADDRESS_WIDTH(8),
     .DATA_WIDTH   (8)
@@ -54,35 +36,26 @@ FIFO #(
     .sys_clk  (sys_clk),
     .sys_rst_n(sys_rst_n),
     .data_in  (tx_data_in),
-    .write    (tx_fifo_wr),
-    .read     (tx_start),
+    .write    (tx_fifo_write),
+    .read     (tx_start),  // FIFO当前指针指向的输出，有read信号后指针加一
     .data_out (tx_fifo_data_out),
     .empty    (tx_fifo_empty),
     .full     (tx_fifo_full)
 );
 
-// ----------------------------------------------------------------------------
-// TX 自动发送逻辑
-// ----------------------------------------------------------------------------
-// ready = TX空闲 且 FIFO非空
+// 上升沿检测，用于控制自动发送FIFO里面的数据
+wire tx_busy;
 wire tx_ready = ~tx_busy & ~tx_fifo_empty;
-
-// 上升沿检测 → 单周期脉冲，同时作为 tx_start 和 FIFO 读使能
-wire tx_start;
 edge_detect #(
     .EDGE_TYPE(0)
 ) edge_tx_start (
     .sys_clk  (sys_clk),
     .sys_rst_n(sys_rst_n),
     .signal_in(tx_ready),
-    .pulse_out(tx_start)
+    .pulse_out(tx_start)  // 单周期脉冲，作为tx_start和FIFO读使能
 );
 
-// ----------------------------------------------------------------------------
-// uart_tx 实例化
-// ----------------------------------------------------------------------------
-wire tx_done;  // TX 完成脉冲（内部使用）
-
+// Tx 模块
 uart_tx uart_tx_inst (
     .sys_clk        (sys_clk),
     .sys_rst_n      (sys_rst_n),
@@ -95,12 +68,11 @@ uart_tx uart_tx_inst (
     .busy           (tx_busy)
 );
 
-// ----------------------------------------------------------------------------
-// uart_rx 实例化
-// ----------------------------------------------------------------------------
-wire [7:0]  rx_data_raw;
-wire        rx_done_raw;
-wire        rx_parity_result;  // 未使用，可扩展
+
+// Rx 模块
+wire [7:0]  rx_fifo_data_in;
+wire rx_parity_result;
+wire rx_error;
 
 uart_rx uart_rx_inst (
     .sys_clk        (sys_clk),
@@ -108,37 +80,38 @@ uart_rx uart_rx_inst (
     .rx             (rx),
     .baud_cnt_max_in(baud_cnt_max_in),
     .parity_mode    (parity_mode),
-    .data_out       (rx_data_raw),
+    .data_out       (rx_fifo_data_in),
     .parity_result  (rx_parity_result),
-    .done           (rx_done_raw),
+    .done           (rx_done),
     .error          (rx_error)
 );
 
-// ----------------------------------------------------------------------------
-// RX FIFO 信号
-// ----------------------------------------------------------------------------
-wire rx_fifo_full;   // 内部使用，注意溢出
+// 上升沿检测，用于检测接收完成信号，输出写入FIFO信号
+wire rx_ready = rx_done & ~rx_fifo_full & ~rx_error & ~rx_parity_result;
+wire rx_fifo_write;
+edge_detect #(
+    .EDGE_TYPE(0)
+) edge_rx (
+    .sys_clk  (sys_clk),
+    .sys_rst_n(sys_rst_n),
+    .signal_in(rx_ready),
+    .pulse_out(rx_fifo_write)  // 单周期脉冲
+);
 
-// 收到一帧 → 写入 RX FIFO
-wire rx_fifo_wr = rx_done_raw & ~rx_fifo_full;
-
+// Rx FIFO
 FIFO #(
     .ADDRESS_WIDTH(8),
     .DATA_WIDTH   (8)
 ) rx_fifo_inst (
     .sys_clk  (sys_clk),
     .sys_rst_n(sys_rst_n),
-    .data_in  (rx_data_raw),
-    .write    (rx_fifo_wr),
-    .read     (rx_rd_en),
+    .data_in  (rx_fifo_data_in),
+    .write    (rx_fifo_write),
+    .read     (rx_read),
     .data_out (rx_data_out),
     .empty    (rx_fifo_empty),
     .full     (rx_fifo_full)
 );
 
-// ----------------------------------------------------------------------------
-// 输出分配
-// ----------------------------------------------------------------------------
-assign rx_done = rx_done_raw;
 
 endmodule

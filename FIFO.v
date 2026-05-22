@@ -6,7 +6,7 @@ module FIFO #(
 )(
     input                          sys_clk  ,
     input                          sys_rst_n,
-    input      [DATA_WIDTH - 1:0]  data_in  ,
+    input       [DATA_WIDTH - 1:0] data_in  ,
     input                          write    ,  // 单周期脉冲
     input                          read     ,  // 单周期脉冲
     output wire [DATA_WIDTH - 1:0] data_out ,
@@ -15,6 +15,9 @@ module FIFO #(
 );
 
 localparam RAM_LENGTH = 1 << ADDRESS_WIDTH;
+
+wire empty_wire;
+wire full_wire;
 
 // 读写指针
 reg [ADDRESS_WIDTH - 1:0] write_address;
@@ -41,7 +44,7 @@ always @(posedge sys_clk or negedge sys_rst_n) begin
         write_address <= 0;
         fifo_cnt      <= 0;
     end else begin
-        case ({(write & ~full), (read & ~empty)})
+        case ({(write & ~full_wire), (read & ~empty_wire)})
             2'b10:   // 只写不读
                 fifo_cnt <= fifo_cnt + 1'b1;
             2'b01:   // 只读不写
@@ -55,7 +58,7 @@ end
 always @(posedge sys_clk or negedge sys_rst_n) begin
     if (sys_rst_n == 0) begin
         write_address <= 0;
-    end else if (write & ~full) begin
+    end else if (write & ~full_wire) begin
         write_address <= write_address + 1'b1;
     end
 end
@@ -64,19 +67,21 @@ end
 always @(posedge sys_clk or negedge sys_rst_n) begin
     if (sys_rst_n == 0) begin
         read_address <= 0;
-    end else if (read & ~empty) begin
+    end else if (read & ~empty_wire) begin
         read_address <= read_address + 1'b1;
     end
 end
 
 // 空满标志
+assign empty_wire = (fifo_cnt == 0) ? 1 : 0;
+assign full_wire  = (fifo_cnt == RAM_LENGTH) ? 1 : 0;
 always @(posedge sys_clk or negedge sys_rst_n) begin
     if (sys_rst_n == 0) begin
         empty <= 1'b1;
         full  <= 1'b0;
     end else begin
-        empty <= (fifo_cnt == 0);
-        full  <= (fifo_cnt == RAM_LENGTH);
+        empty <= empty_wire;
+        full  <= full_wire;
     end
 end
 
