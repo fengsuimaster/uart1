@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module uart_rx(
     input             sys_clk        ,
     input             sys_rst_n      ,

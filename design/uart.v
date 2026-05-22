@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 `include "uart_tx.v"
 `include "uart_rx.v"
 `include "FIFO.v"

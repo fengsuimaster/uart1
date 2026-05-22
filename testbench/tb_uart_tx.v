@@ -1,3 +1,6 @@
+`timescale 1ns/1ps
+`include "../design/uart_tx.v"
+
 module tb_uart_tx();
 
 reg        sys_clk         ;

@@ -1,3 +1,6 @@
+`timescale 1ns/1ps
+`include "../design/ram.v"
+
 module tb_ram();
 
 parameter ADDRESS_WIDTH = 'd8;

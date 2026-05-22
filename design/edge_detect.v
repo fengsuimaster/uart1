@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module edge_detect #(
     parameter  EDGE_TYPE = 0      // 0: 上升沿, 1: 下降沿, 2: 双边沿
 ) (

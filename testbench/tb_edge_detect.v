@@ -1,3 +1,6 @@
+`timescale 1ns/1ps
+`include "../design/edge_detect.v"
+
 module tb_edge_detect();
 
 reg  sys_clk  ;

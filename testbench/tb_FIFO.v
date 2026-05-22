@@ -1,4 +1,5 @@
-`include "FIFO.v"
+`timescale 1ns/1ps
+`include "../design/FIFO.v"
 
 module tb_FIFO();
 

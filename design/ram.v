@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 `include "edge_detect.v"
 
 module ram #(
